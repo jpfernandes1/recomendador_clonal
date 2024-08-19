@@ -1,0 +1,80 @@
+trigger:
+  branches:
+    include:
+      - develop
+      - feat
+  paths:
+    include:
+      - src/*
+      - pipelines/aloc_clonal_pipeline.yaml
+
+resources:
+- repo: self
+  fetchDepth: 1
+
+pool:
+  name: Azure Pipelines
+
+parameters:
+  - name: dockerImage
+    default: aloc_clonal
+  - name: path
+    default: src
+  - name: project_prefix
+    default: sz-academia-digital
+  - name: registry_connection_sufix
+    default: container-registry
+  - name: service_region
+    default: southamerica-east1
+
+variables:
+  - name: Environment
+    ${{ if eq(variables['Build.SourceBranchName'], 'master') }}:
+      value: prod
+    ${{ if eq(variables['Build.SourceBranchName'], 'release') }}:
+      value: qas
+    ${{ if eq(variables['Build.SourceBranchName'], 'develop') }}:
+      value: dev
+    ${{ if eq(variables['Build.SourceBranchName'], 'feat') }}:
+      value: feat
+  - name: GCPProject
+    value: '${{ parameters.project_prefix }}-${{ variables.Environment }}'
+  - name: SecureFile
+    value: '${{ variables.GCPProject }}.json'
+  - name: ServiceRegion
+    value: ${{ parameters.service_region }}
+  - name: ServiceName
+    value: ${{ parameters.function_name }}
+
+steps:   
+- task: GoogleCloudSdkTool@1
+  displayName: 'Install GcloudSDK'
+  inputs:
+    versionSpec: '315.x'
+
+- task: DownloadSecureFile@1
+  displayName: 'Download Secret'
+  name: serviceAccount
+  inputs:
+    secureFile: ${{ variables.SecureFile }}
+    retryCount: '3'
+
+- task: CmdLine@2
+  displayName: 'Gcloud Auth'
+  inputs:
+    script: |
+      gcloud auth activate-service-account --key-file=$(serviceAccount.secureFilePath)
+
+- task: CmdLine@2
+  displayName: 'Publish Application'
+  inputs:
+    script: |
+      gcloud auth activate-service-account --key-file=$(serviceAccount.secureFilePath)
+      gcloud run deploy ${{ variables.ServiceName }} \
+        --image gcr.io/${{ variables.DockerImageName }}:$(Build.BuildId) \
+        --region ${{ variables.ServiceRegion }} \
+        --project ${{ parameters.project_prefix }}-${{ variables.Environment }} \
+        --allow-unauthenticated \
+        --memory 1Gi \
+        --quiet \
+        --set-env-vars apiurl=${{variables.APIURL}},project=${{variables.GCPProject}}
