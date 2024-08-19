@@ -7,14 +7,14 @@
  - Qual o contexto?
  - Quais os benefícios do projeto?
 
- 4. Etapas da solução - Baseado em que? CRISP-DM?
-    a) Definir o problema de negócio - análise de requisitos
-    b) Entender quais dados serão necessários e os principais beneficiados (possuem o know how do negócio)
-    c) EDA
-    d) Coletar os dados e realizar os pré-processamentos
-    e) Treinamento do modelo, comparações, selecão e tunning
-    f) Interpretação dos resultados do modelo 
-    g) Deploy
+ 4. Etapas da solução - Baseado em que? CRISP-DM? <br>
+    a) Definir o problema de negócio - análise de requisitos <br>
+    b) Entender quais dados serão necessários e os principais beneficiados (possuem o know how do negócio) <br>
+    c) EDA <br>
+    d) Coletar os dados e realizar os pré-processamentos <br>
+    e) Treinamento do modelo, comparações, selecão e tunning <br>
+    f) Interpretação dos resultados do modelo <br>
+    g) Deploy <br>
 
 5. Principais Insights de negócio 
 

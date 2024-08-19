@@ -1,67 +1,93 @@
-import pandas as pd
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.base import BaseEstimator, TransformerMixin
-import numpy as np
+from sklearn.cluster import KMeans
 from statistics import mode
+import pandas as pd
+import numpy as np
 
-
-class RemoveOutliers(BaseEstimator, TransformerMixin):
-    def __init__(self, factor=1.5):
-        self.factor = factor
-
+class OutlierRemover(BaseEstimator, TransformerMixin):
+    def __init__(self, threshold=3.0):
+        self.threshold = threshold
+    
     def fit(self, X, y=None):
         return self
-
-    def transform(self, X, y=None):
-        X = X.copy()  # Cria uma cópia para não alterar o DataFrame original
-        numeric_cols = X.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            q1 = X[col].quantile(0.25)
-            q3 = X[col].quantile(0.75)
-            iqr = q3 - q1
-            lower_bound = q1 - (self.factor * iqr)
-            upper_bound = q3 + (self.factor * iqr)
-            X = X[(X[col] >= lower_bound) & (X[col] <= upper_bound)]
-        return X
-
-def create_pipeline(df):
-    # Identifica colunas numéricas e categóricas automaticamente
-    numeric_features = df.select_dtypes(include=[np.number]).columns
-    categorical_features = df.select_dtypes(include=['object']).columns
     
-    # Cria um pipeline para processamento das variáveis categóricas e numéricas
+    def transform(self, X):
+        X_out = X.copy()
+        numeric_cols = X_out.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            X_out = X_out[(np.abs(X_out[col] - X_out[col].mean()) / X_out[col].std() < self.threshold)]
+        return X_out
+
+def create_preprocessing_pipeline(df):
+    # Identifica variáveis numéricas e categóricas automaticamente
+    numeric_features = df.select_dtypes(include=[np.number]).columns
+    categorical_features = df.select_dtypes(include=['object', 'category']).columns
+
+    # Define o pré-processamento para variáveis numéricas e categóricas
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', Pipeline(steps=[
-                ('remove_outliers', RemoveOutliers()),
-                ('scaler', MinMaxScaler())
+                ('outlier_remover', OutlierRemover()),  # Remove outliers
+                ('scaler', StandardScaler())  # Aplica Scaler
             ]), numeric_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-        ]
-    )
-    
-    pipeline = Pipeline(steps=[('preprocessor', preprocessor)])
-    
-    # Ajusta o pipeline aos dados e retorna
-    pipeline.fit(df)
-    
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)  # Aplica OneHotEncoder
+        ])
+
+    return preprocessor
+
+def create_model_pipeline():
+    # Cria a pipeline com o modelo de regressão
+    pipeline = Pipeline(steps=[
+        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42))
+    ])
+
     return pipeline
 
-# Exemplo de como executar:
-'''# Importa a função do arquivo pre_processor.py
-from pre_processor import create_pipeline
+def train_and_evaluate_model(model_pipeline, df, target_column):
+    # Divide os dados em X e y
+    X = df.drop(columns=[target_column])
+    y = df[target_column]
 
-# Suponha que df seja o seu DataFrame
-df = pd.read_csv('seu_arquivo.csv')  # Substitua com o caminho do seu arquivo
+    # Treina o modelo com os dados completos
+    model_pipeline.fit(X, y)
 
-# Cria o pipeline com o DataFrame
-pipeline = create_pipeline(df)
+    # Faz previsões nos próprios dados (não ideal, mas necessário dado o cenário)
+    y_pred = model_pipeline.predict(X)
 
-# Transforme os dados de treino e teste
-X_train_processed = pipeline.transform(X_train)
-X_test_processed = pipeline.transform(X_test)'''
+    # Avalia o modelo
+    r2 = r2_score(y, y_pred)
+    
+    # Exibir as métricas de avaliação
+    print(f"R²: {r2}")
+
+    return model_pipeline
+
+"""
+# Supondo que você já tenha os dados carregados no DataFrame `df`
+# E a coluna `target_column` representa a coluna que você está tentando prever (por exemplo, produtividade)
+
+# Crie e aplique a pipeline de pré-processamento
+preprocessor = create_preprocessing_pipeline(df)
+df_processed = apply_preprocessing(preprocessor, df)
+
+# Crie e treine a pipeline de modelo
+model_pipeline = create_model_pipeline()
+trained_model = train_and_evaluate_model(model_pipeline, df_processed, target_column='produtividade')
+"""
+
+def apply_preprocessing(preprocessor, df):
+    # Ajusta a pipeline aos dados e transforma o conjunto de dados
+    df_transformed = preprocessor.fit_transform(df)
+    
+    # Retorna o DataFrame transformado
+    df_transformed_df = pd.DataFrame(df_transformed, columns=preprocessor.get_feature_names_out())
+    
+    return df_transformed_df
 
 
 def substituir_valores_raros(df, limite=10, excluir_colunas=[]):
