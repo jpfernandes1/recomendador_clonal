@@ -2,6 +2,7 @@ from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.compose import make_column_selector
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.cluster import KMeans
@@ -9,86 +10,24 @@ from statistics import mode
 import pandas as pd
 import numpy as np
 
-class OutlierRemover(BaseEstimator, TransformerMixin):
-    def __init__(self, threshold=3.0):
-        self.threshold = threshold
-    
+class OutlierRemoverIQR(BaseEstimator, TransformerMixin):
+    def __init__(self, factor=1.5):
+        self.factor = factor
+
     def fit(self, X, y=None):
         return self
-    
+
     def transform(self, X):
-        X_out = X.copy()
-        numeric_cols = X_out.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            X_out = X_out[(np.abs(X_out[col] - X_out[col].mean()) / X_out[col].std() < self.threshold)]
-        return X_out
-
-def create_preprocessing_pipeline(df):
-    # Identifica variáveis numéricas e categóricas automaticamente
-    numeric_features = df.select_dtypes(include=[np.number]).columns
-    categorical_features = df.select_dtypes(include=['object', 'category']).columns
-
-    # Define o pré-processamento para variáveis numéricas e categóricas
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', Pipeline(steps=[
-                ('outlier_remover', OutlierRemover()),  # Remove outliers
-                ('scaler', StandardScaler())  # Aplica Scaler
-            ]), numeric_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)  # Aplica OneHotEncoder
-        ])
-
-    return preprocessor
-
-def create_model_pipeline():
-    # Cria a pipeline com o modelo de regressão
-    pipeline = Pipeline(steps=[
-        ('regressor', RandomForestRegressor(n_estimators=100, random_state=42))
-    ])
-
-    return pipeline
-
-def train_and_evaluate_model(model_pipeline, df, target_column):
-    # Divide os dados em X e y
-    X = df.drop(columns=[target_column])
-    y = df[target_column]
-
-    # Treina o modelo com os dados completos
-    model_pipeline.fit(X, y)
-
-    # Faz previsões nos próprios dados (não ideal, mas necessário dado o cenário)
-    y_pred = model_pipeline.predict(X)
-
-    # Avalia o modelo
-    r2 = r2_score(y, y_pred)
-    
-    # Exibir as métricas de avaliação
-    print(f"R²: {r2}")
-
-    return model_pipeline
-
-"""
-# Supondo que você já tenha os dados carregados no DataFrame `df`
-# E a coluna `target_column` representa a coluna que você está tentando prever (por exemplo, produtividade)
-
-# Crie e aplique a pipeline de pré-processamento
-preprocessor = create_preprocessing_pipeline(df)
-df_processed = apply_preprocessing(preprocessor, df)
-
-# Crie e treine a pipeline de modelo
-model_pipeline = create_model_pipeline()
-trained_model = train_and_evaluate_model(model_pipeline, df_processed, target_column='produtividade')
-"""
-
-def apply_preprocessing(preprocessor, df):
-    # Ajusta a pipeline aos dados e transforma o conjunto de dados
-    df_transformed = preprocessor.fit_transform(df)
-    
-    # Retorna o DataFrame transformado
-    df_transformed_df = pd.DataFrame(df_transformed, columns=preprocessor.get_feature_names_out())
-    
-    return df_transformed_df
-
+        # Para cada coluna numérica, remover outliers usando o método IQR
+        for col in X.columns:
+            if pd.api.types.is_numeric_dtype(X[col]):
+                Q1 = X[col].quantile(0.25)
+                Q3 = X[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - (self.factor * IQR)
+                upper_bound = Q3 + (self.factor * IQR)
+                X = X[(X[col] >= lower_bound) & (X[col] <= upper_bound)]
+        return X
 
 def substituir_valores_raros(df, limite=10, excluir_colunas=[]):
     """
